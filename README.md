@@ -3,7 +3,7 @@
 Este projeto é uma simulação de um dispositivo ESP32, desenvolvido em Python com uma interface gráfica (GUI) usando `Tkinter` e um script de linha de comando (CLI) para enviar dados para uma API.
 
 
-![Tela da Interface Gráfica](images/simulador_gui.png)
+![Tela da Interface Gráfica](https://github.com/wanderleymbf/esp32Simulator/blob/main/images/simulator_gui.png?raw=true)
 
 ## Funcionalidades
 
