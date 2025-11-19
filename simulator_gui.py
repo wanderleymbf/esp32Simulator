@@ -1,100 +1,122 @@
-import requests
 import time
 import threading
 import tkinter as tk
 from tkinter import scrolledtext
+import paho.mqtt.client as mqtt
+import json
 
-default_url = "http://127.0.0.1:8000/api/store"
-url = default_url
+# ================================================
+# CONFIGURAÇÕES
+# ================================================
 default_codeespuni = "123"
 codeespuni = default_codeespuni
 
-status = "off"
-is_running = False  
+MQTT_BROKER = "192.168.1.212"
+MQTT_PORT = 1883
 
-def send_data():
-    global is_running
+MQTT_TOPIC_SENSOR = "jws/123/data"
+MQTT_TOPIC_STATUS = "jws/123/device_status"
+
+client = mqtt.Client()
+
+status = "off"
+is_running = False
+
+
+# ================================================
+# MQTT
+# ================================================
+def connect_mqtt():
+    try:
+        client.connect(MQTT_BROKER, MQTT_PORT, 60)
+        console_output(f"Conectado ao broker MQTT {MQTT_BROKER}:{MQTT_PORT}")
+    except Exception as e:
+        console_output(f"Erro ao conectar MQTT: {e}")
+
+
+# ================================================
+# ENVIA O SENSOR A CADA 5s
+# ================================================
+def loop_sensor():
+    global is_running, status
+
+    connect_mqtt()
+
     while is_running:
         counted_at = int(time.time())
 
         if status == "on":
             sensor_data = {
-                "sensor_data": {
-                    "CODESP": codeespuni,
-                    "QTD": "1",
-                    "COUNTED_AT": counted_at
-                }
+                "codesp": codeespuni,
+                "qtd": 1,
+                "counted_at": counted_at
             }
 
-            device_status = {
-                "device_status": {
-                    "NOME": "esp2",
-                    "IPADRESS": "10.0.0.1",
-                    "COUNTED_AT": counted_at,
-                    "MACADRESS": "00:00:00:00:00:00",
-                    "CODESPUNI": codeespuni,
-                    "STATUS": status
-                }
-            }
+            client.publish(MQTT_TOPIC_SENSOR, json.dumps(sensor_data))
+            console_output(f"[MQTT] Sensor enviado: {sensor_data}")
 
-            response = requests.post(url, json=sensor_data)
-            response2 = requests.post(url, json=device_status)
-
-            console_output(f"Sensor Data - Status Code: {response.status_code}, Response: {response.text}")
-            console_output(f"Device Status - Status Code: {response2.status_code}, Response: {response2.text}")
-        
-        else:
-            device_status = {
-                "device_status": {
-                    "NOME": "esp2",
-                    "IPADRESS": "10.0.0.1",
-                    "COUNTED_AT": counted_at,
-                    "MACADRESS": "00:00:00:00:00:00",
-                    "CODESPUNI": codeespuni,
-                    "STATUS": status
-                }
-            }
-            response2 = requests.post(url, json=device_status)
-            console_output(f"Device Status - Status Code: {response2.status_code}, Response: {response2.text}")
-        
         time.sleep(5)
 
+
+# ================================================
+# INICIAR — envia STATUS ON apenas uma vez
+# ================================================
 def iniciar_contagem():
     global status, is_running
     status = "on"
     is_running = True
-    console_output("Iniciando contagem...")
-    threading.Thread(target=send_data, daemon=True).start()
 
+    console_output("▶ Iniciando contagem... Enviando STATUS ON")
+
+    connect_mqtt()
+
+    counted_at = int(time.time())
+
+    device_status = {
+        "codesp": codeespuni,
+        "ipaddr": "10.0.0.1",
+        "macaddr": "00:00:00:00:00:00",
+        "status": "on",
+        "esp_name": "esp2",
+        "counted_at": counted_at
+    }
+
+    client.publish(MQTT_TOPIC_STATUS, json.dumps(device_status))
+    console_output(f"[MQTT] STATUS ON enviado: {device_status}")
+
+    # inicia thread que envia sensor
+    threading.Thread(target=loop_sensor, daemon=True).start()
+
+
+# ================================================
+# PARAR — envia STATUS OFF apenas uma vez
+# ================================================
 def parar_linha():
     global status, is_running
     status = "off"
     is_running = False
-    console_output("Parando contagem... Enviando status off para a API.")
 
+    console_output("⛔ Parando linha... enviando STATUS OFF")
+
+    connect_mqtt()
     counted_at = int(time.time())
+
     device_status = {
-        "device_status": {
-            "NOME": "esp2",
-            "IPADRESS": "10.0.0.1",
-            "COUNTED_AT": counted_at,
-            "MACADRESS": "00:00:00:00:00:00",
-            "CODESPUNI": codeespuni,
-            "STATUS": status
-        }
+        "codesp": codeespuni,
+        "ipaddr": "10.0.0.1",
+        "macaddr": "00:00:00:00:00:00",
+        "status": "off",
+        "esp_name": "esp2",
+        "counted_at": counted_at
     }
-    response2 = requests.post(url, json=device_status)
-    console_output(f"Device Status - Status Code: {response2.status_code}, Response: {response2.text}")
 
-def atualizar_url():
-    global url
-    new_url = url_entry.get()
-    if new_url:
-        url = new_url
-        console_output(f"URL da API atualizada para: {url}")
-    else:
-        console_output("URL inválida! Mantendo a URL padrão.")
+    client.publish(MQTT_TOPIC_STATUS, json.dumps(device_status))
+    console_output("[MQTT] STATUS OFF enviado")
 
+
+# ================================================
+# UI
+# ================================================
 def atualizar_codeespuni():
     global codeespuni
     new_codeespuni = codeespuni_entry.get()
@@ -102,81 +124,39 @@ def atualizar_codeespuni():
         codeespuni = new_codeespuni
         console_output(f"CODESPUNI atualizado para: {codeespuni}")
     else:
-        console_output("CODESPUNI inválido! Mantendo o valor padrão.")
+        console_output("CODESPUNI inválido!")
+
 
 def console_output(message):
     console.insert(tk.END, message + "\n")
     console.see(tk.END)
 
-button_style = {
-    'font': ('Arial', 10, 'bold'),
-    'bg': '#4CAF50',
-    'fg': 'white',
-    'activebackground': '#45a049',
-    'activeforeground': 'white',
-    'relief': 'flat',
-    'bd': 4,
-    'padx': 8,
-    'pady': 6,
-    'width': 12
-}
-
-red_button_style = {
-    **button_style,
-    'bg': '#e53935',
-    'activebackground': '#d32f2f'
-}
-
-entry_style = {
-    'font': ('Arial', 12),
-    'width': 30,
-    'bd': 3,
-    'relief': 'groove'
-}
 
 root = tk.Tk()
-root.title("Simulador ESP32")
+root.title("Simulador ESP32 - MQTT")
 root.geometry("550x500")
 root.config(bg="#f0f0f0")
 root.resizable(False, False)
 
-title = tk.Label(root, text="Simulador ESP32", font=("Arial", 16, 'bold'), bg="#f0f0f0", fg="#333333")
+title = tk.Label(root, text="Simulador ESP32 - MQTT", font=("Arial", 16, 'bold'), bg="#f0f0f0")
 title.pack(pady=20)
-
-
-url_frame = tk.Frame(root, bg="#f0f0f0")
-url_frame.pack(pady=5)
-
-url_label = tk.Label(url_frame, text="URL da API:", font=("Arial", 10), bg="#f0f0f0", fg="#333333")
-url_label.grid(row=0, column=0, padx=5, pady=5, sticky="e")
-url_entry = tk.Entry(url_frame, **entry_style)
-url_entry.insert(0, default_url)
-url_entry.grid(row=0, column=1, padx=5, pady=5)
-update_url_button = tk.Button(url_frame, text="Salvar", command=atualizar_url, **button_style)
-update_url_button.grid(row=0, column=2, padx=5, pady=5)
 
 codeespuni_frame = tk.Frame(root, bg="#f0f0f0")
 codeespuni_frame.pack(pady=5)
 
-codeespuni_label = tk.Label(codeespuni_frame, text="CODESPUNI:", font=("Arial", 10), bg="#f0f0f0", fg="#333333")
-codeespuni_label.grid(row=0, column=0, padx=5, pady=5, sticky="e")
-codeespuni_entry = tk.Entry(codeespuni_frame, **entry_style)
+tk.Label(codeespuni_frame, text="CODESPUNI:", bg="#f0f0f0").grid(row=0, column=0, padx=5)
+codeespuni_entry = tk.Entry(codeespuni_frame, width=30)
 codeespuni_entry.insert(0, default_codeespuni)
-codeespuni_entry.grid(row=0, column=1, padx=5, pady=5)
-update_codeespuni_button = tk.Button(codeespuni_frame, text="Salvar", command=atualizar_codeespuni, **button_style)
-update_codeespuni_button.grid(row=0, column=2, padx=5, pady=5)
+codeespuni_entry.grid(row=0, column=1, padx=5)
+tk.Button(codeespuni_frame, text="Salvar", command=atualizar_codeespuni).grid(row=0, column=2)
 
+action_frame = tk.Frame(root, bg="#f0f0f0")
+action_frame.pack(pady=20)
 
-action_button_frame = tk.Frame(root, bg="#f0f0f0")
-action_button_frame.pack(pady=15)
+tk.Button(action_frame, text="Iniciar Contagem", command=iniciar_contagem).grid(row=0, column=0, padx=10)
+tk.Button(action_frame, text="Parar Linha", command=parar_linha).grid(row=0, column=1, padx=10)
 
-start_button = tk.Button(action_button_frame, text="Iniciar Contagem", command=iniciar_contagem, **button_style)
-start_button.grid(row=0, column=0, padx=5)
-stop_button = tk.Button(action_button_frame, text="Parar Linha", command=parar_linha, **red_button_style)
-stop_button.grid(row=0, column=1, padx=5)
-
-console = scrolledtext.ScrolledText(root, width=60, height=10, bg="black", fg="white", wrap=tk.WORD, font=("Courier", 10))
-console.pack(pady=10)
+console = scrolledtext.ScrolledText(root, width=60, height=10, bg="black", fg="white")
+console.pack(pady=20)
 
 root.mainloop()
-	
