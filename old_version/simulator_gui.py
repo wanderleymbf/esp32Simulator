@@ -4,6 +4,8 @@ import tkinter as tk
 from tkinter import scrolledtext
 import paho.mqtt.client as mqtt
 import json
+import pytz
+from datetime import datetime
 
 # ================================================
 # CONFIGURAÇÕES
@@ -11,7 +13,8 @@ import json
 default_codeespuni = "123"
 codeespuni = default_codeespuni
 
-MQTT_BROKER = "192.168.1.212"
+# MQTT_BROKER = "192.168.1.215"
+MQTT_BROKER = "192.168.200.24"
 MQTT_PORT = 1883
 
 MQTT_TOPIC_SENSOR = "jws/123/data"
@@ -22,6 +25,8 @@ client = mqtt.Client()
 status = "off"
 is_running = False
 
+# Definindo o fuso horário de Fortaleza
+fortaleza_tz = pytz.timezone('America/Fortaleza')
 
 # ================================================
 # MQTT
@@ -43,7 +48,8 @@ def loop_sensor():
     connect_mqtt()
 
     while is_running:
-        counted_at = int(time.time())
+        # Obtendo o tempo atual de Fortaleza
+        counted_at = int(time.mktime(datetime.now(fortaleza_tz).timetuple()))
 
         if status == "on":
             sensor_data = {
@@ -70,7 +76,8 @@ def iniciar_contagem():
 
     connect_mqtt()
 
-    counted_at = int(time.time())
+    # Obtendo o tempo atual de Fortaleza
+    counted_at = int(time.mktime(datetime.now(fortaleza_tz).timetuple()))
 
     device_status = {
         "codesp": codeespuni,
@@ -99,7 +106,8 @@ def parar_linha():
     console_output("⛔ Parando linha... enviando STATUS OFF")
 
     connect_mqtt()
-    counted_at = int(time.time())
+    # Obtendo o tempo atual de Fortaleza
+    counted_at = int(time.mktime(datetime.now(fortaleza_tz).timetuple()))
 
     device_status = {
         "codesp": codeespuni,
